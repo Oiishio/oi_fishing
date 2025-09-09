@@ -1,5 +1,5 @@
--- client/main.lua (Optimized)
--- Core fishing mechanics only
+-- client/main.lua (Fixed - No Spam on Join)
+-- Core fishing mechanics only - minimal notifications
 
 lib.locale()
 
@@ -10,47 +10,62 @@ local state = {
     currentZone = nil,
     playerLevel = 1,
     isFishing = false,
-    rodObject = nil
+    rodObject = nil,
+    initialized = false
 }
 
 -- Cache frequently accessed data
 local cache = {
     blips = {},
     zones = {},
-    lastLevelUpdate = 0
+    lastLevelUpdate = 0,
+    lastZoneNotification = 0
 }
 
 -- Initialize core fishing system
 function FishingCore.init()
-    -- Load initial level
+    if state.initialized then return end
+    
+    -- Load initial level (silently)
     lib.callback('lunar_fishing:getLevel', false, function(level)
         if level then
             state.playerLevel = math.floor(level)
-            FishingCore.updateLevel(level)
+            FishingCore.updateLevel(level, true) -- true = silent
+            state.initialized = true
         end
     end)
     
     -- Listen for level updates
-    RegisterNetEvent('lunar_fishing:updateLevel', FishingCore.updateLevel)
-    RegisterNetEvent('esx:playerLoaded', function()
-        lib.callback('lunar_fishing:getLevel', 100, FishingCore.updateLevel)
+    RegisterNetEvent('lunar_fishing:updateLevel', function(level)
+        FishingCore.updateLevel(level, false) -- false = show notifications
     end)
+    
+    RegisterNetEvent('esx:playerLoaded', function()
+        lib.callback('lunar_fishing:getLevel', 100, function(level)
+            FishingCore.updateLevel(level, true) -- Silent on initial load
+        end)
+    end)
+    
     RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
-        lib.callback('lunar_fishing:getLevel', 100, FishingCore.updateLevel)
+        lib.callback('lunar_fishing:getLevel', 100, function(level)
+            FishingCore.updateLevel(level, true) -- Silent on initial load
+        end)
     end)
 end
 
 -- Update player level and rebuild zones/blips
-function FishingCore.updateLevel(level)
+function FishingCore.updateLevel(level, silent)
     if not level then return end
     
     local now = GetGameTimer()
     if now - cache.lastLevelUpdate < 5000 then return end -- Throttle updates
     
     local newLevel = math.floor(level)
-    if newLevel > state.playerLevel then
+    
+    -- Only show level up notification if not silent and actually leveled up
+    if not silent and newLevel > state.playerLevel then
         FishingUI.queueNotification(
-            locale('unlocked_level'):format(newLevel) or ('🎉 Level %d reached!'):format(newLevel),
+            locale('unlocked_level'):format(newLevel) or ('🎉 Pasiekėte %d lygį!'):format(newLevel),
             'success',
             FishingConstants.NOTIFICATION_PRIORITY.HIGH
         )
@@ -128,32 +143,28 @@ function FishingCore.rebuildZones()
     end
 end
 
--- Zone enter handler
+-- Zone enter handler (reduced notifications)
 function FishingCore.onZoneEnter(index, locationIndex, data)
     if state.currentZone?.index == index and state.currentZone?.locationIndex == locationIndex then return end
     
     state.currentZone = { index = index, locationIndex = locationIndex }
     
-    if data.message?.enter then
-        FishingUI.queueNotification(data.message.enter, 'success')
+    -- Only show zone notifications if player has been active for a while
+    local now = GetGameTimer()
+    if state.initialized and now - cache.lastZoneNotification > 10000 then -- 10 seconds cooldown
+        if data.message?.enter then
+            FishingUI.queueNotification(data.message.enter, 'success', FishingConstants.NOTIFICATION_PRIORITY.LOW)
+        end
+        cache.lastZoneNotification = now
     end
-    
-    -- Show zone info (throttled)
-    local zoneInfo = ('📍 %s | Level %d+ | %d fish types'):format(
-        data.blip.name, data.minLevel, #data.fishList
-    )
-    FishingUI.queueNotification(zoneInfo, 'inform', FishingConstants.NOTIFICATION_PRIORITY.LOW)
 end
 
--- Zone exit handler  
+-- Zone exit handler (silent)
 function FishingCore.onZoneExit(index, locationIndex, data)
     if state.currentZone?.index ~= index or state.currentZone?.locationIndex ~= locationIndex then return end
     
     state.currentZone = nil
-    
-    if data.message?.exit then
-        FishingUI.queueNotification(data.message.exit, 'inform')
-    end
+    -- No exit notifications to reduce spam
 end
 
 -- Create fishing rod object
@@ -213,13 +224,13 @@ function FishingCore.startFishing(bait, fish, envEffects)
     
     SetPedCanRagdoll(cache.ped, false)
     
-    -- Show fishing status
+    -- Show fishing status (simplified - just weather bonus)
     local statusText = locale('cancel')
     local env = FishingEnvironment.getInfo()
     local bonuses = FishingCore.getEffectSummary(env.effects)
     
     if bonuses then
-        statusText = statusText .. ' | ' .. bonuses
+        statusText = statusText .. ' | Oras: ' .. bonuses
     end
     
     FishingUI.showText(statusText, 'ban')
@@ -298,7 +309,7 @@ function FishingCore.stopFishing()
     SetPedCanRagdoll(cache.ped, true)
 end
 
--- Get effect summary for display
+-- Get effect summary for display (weather only)
 function FishingCore.getEffectSummary(effects)
     local bonuses = {}
     
@@ -314,12 +325,12 @@ end
 -- Get bite message based on rarity
 function FishingCore.getBiteMessage(rarity)
     local messages = {
-        common = locale('felt_bite') or 'Something bit the bait!',
-        uncommon = locale('felt_strong_bite') or 'Something strong is pulling!',
-        rare = locale('felt_powerful_bite') or 'A powerful fish took the bait!',
-        epic = locale('felt_epic_bite') or 'An epic fish is fighting!',
-        legendary = locale('felt_legendary_bite') or 'Something legendary lurks below!',
-        mythical = locale('felt_mythical_bite') or 'A mythical creature stirs!'
+        common = locale('felt_bite') or 'Žuvis prikando prie masalo!',
+        uncommon = locale('felt_strong_bite') or 'Kažkas stipraus traukia meškerę!',
+        rare = locale('felt_powerful_bite') or 'Galinga žuvis pagavo masalą!',
+        epic = locale('felt_epic_bite') or 'Epiška žuvis kovoja!',
+        legendary = locale('felt_legendary_bite') or 'Legendinis padaras lurk!',
+        mythical = locale('felt_mythical_bite') or 'Mitinis padaras!'
     }
     return messages[rarity] or messages.common
 end
@@ -327,12 +338,12 @@ end
 -- Get fail message based on rarity
 function FishingCore.getFailMessage(rarity)
     local messages = {
-        common = locale('catch_failed'),
-        uncommon = locale('catch_failed_uncommon') or 'The fish escaped!',
-        rare = locale('catch_failed_rare') or 'The rare fish was too strong!',
-        epic = locale('catch_failed_epic') or 'The epic fish overpowered you!',
-        legendary = locale('catch_failed_legendary') or 'The legendary fish proved too mighty!',
-        mythical = locale('catch_failed_mythical') or 'The mythical being vanished!'
+        common = locale('catch_failed') or 'Nepavyko pagauti žuvies.',
+        uncommon = locale('catch_failed_uncommon') or 'Žuvis pabėgo!',
+        rare = locale('catch_failed_rare') or 'Reta žuvis buvo per stipri!',
+        epic = locale('catch_failed_epic') or 'Epiška žuvis jus nugalėjo!',
+        legendary = locale('catch_failed_legendary') or 'Legendinė žuvis per galinga!',
+        mythical = locale('catch_failed_mythical') or 'Mitinis padaras dingo!'
     }
     return messages[rarity] or messages.common
 end
@@ -382,7 +393,7 @@ function GetCurrentLevelProgress()
 end
 
 function Update(level)
-    FishingCore.updateLevel(level)
+    FishingCore.updateLevel(level, false) -- Show notifications for manual updates
 end
 
 -- Initialize on cache ready

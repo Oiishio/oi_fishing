@@ -1,6 +1,6 @@
 {
     "no_water": "Prieš jus turi būti vanduo.",
-    "cancel": "[E] - Atšaukti",
+    "cancel": "Atšaukti",
     "felt_bite": "Žuvis prikando prie masalo, pasiruoškite ją pagauti!",
     "felt_strong_bite": "Kažkas stipraus traukia jūsų meškerę!",
     "felt_powerful_bite": "Galinga žuvis pagavo jūsų masalą!",
@@ -25,8 +25,8 @@
     "no_fish_to_sell": "Neturite šios žuvies pardavimui.",
     "inventory_full": "Jūsų inventorius pilnas!",
     
-    "fish_price": "Spauskite, kad pardavus žuvį už %s€.",
-    "fish_price2": "Spauskite, kad pardavus žuvį už %s - %s€.",
+    "fish_price": "Spausti, kad parduoti žuvį už %s€.",
+    "fish_price2": "Spausti, kad parduoti žuvį už %s - %s€.",
     "sell_fish": "Parduoti žuvį",
     "buy_heading": "1vnt %s = %s€",
     "buying": "Perkama...",
@@ -38,20 +38,20 @@
     "not_enough_bank": "Neturite pakankamai pinigų banke.",
     "level_required": "Jums reikia %d lygio, kad nusipirkti šį daiktą.",
     
-    "rod_price": "Spauskite, kad nusipirktumėte šią meškerę už %s€.",
-    "equipment_price": "Spauskite, kad nusipirktumėte šią įrangą už %s€.",
+    "rod_price": "Spausti, kad nusipirkti šią meškerę už %s€.",
+    "equipment_price": "Spausti, kad nusipirkti šią įrangą už %s€.",
     "buy_rods": "Pirkti meškeres",
     "fisherman": "Jūrų Prekybos Bendrovė",
     
     "level": "Dabartinis lygis: %s",
     "level_desc": "Jums reikia %s XP, kad pasiektumėte kitą lygį.",
-    "buy_rods_desc": "Spustelėkite, kad peržiūrėtumėte mūsų meškerių asortimentą.",
-    "sell_fish_desc": "Spustelėkite, kad parduotumėte savo pagautas žuvis.",
+    "buy_rods_desc": "Spausti, kad peržiūrėti meškerių asortimentą.",
+    "sell_fish_desc": "Spausti, kad parduoti pagautas žuvis.",
     "open_fisherman": "Kalbėti",
     
     "rent_heading": "Išsinuomoti valtį",
     "rent_content": "Ar tikrai norite išsinuomoti šią valtį už %s€?",
-    "rent_price": "Spustelėkite, kad išsinuomotumėte šią valtį už %s€.",
+    "rent_price": "Spausti, kad išsinuomoti šią valtį už %s€.",
     "rent_boat": "Nuomotis valtis",
     
     "unlocked_level": "🎉 Pasiekėte %d lygį! Dabar galite naudoti naują įrangą ir zonas!",
@@ -59,13 +59,13 @@
     "rod_broke": "Jūsų meškerė neišlaikė spaudimo ir sulaužė.",
     "nothing_to_sell": "Neturite ką parduoti.",
     
-    "anchor_boat": "[%s] - Numesti inkarą",
-    "raise_anchor": "[%s] - Pakelti inkarą",
+    "anchor_boat": "Numesti inkarą",
+    "raise_anchor": "Pakelti inkarą",
     "buy_baits": "Pirkti masalą",
-    "buy_baits_desc": "Spustelėkite, kad nusipirktumėte naują masalą.",
-    "bait_price": "Spustelėkite, kad nusipirktumėte šį masalą už %s€.",
+    "buy_baits_desc": "Spausti, kad nusipirkti naują masalą.",
+    "bait_price": "Spausti, kad nusipirkti šį masalą už %s€.",
     
-    "return_boat": "[%s] - Grąžinti valtį",
+    "return_boat": "Grąžinti valtį",
     "return_content": "Ar tikrai norite grąžinti šią valtį?\nNuomos kompanija jums sumokės %s€ mainais.",
     "returned_boat": "Sėkmingai grąžinote valtį.",
     
@@ -151,23 +151,6 @@
     "time_dusk": "Sutemose",
     "time_night": "Naktis",
     "time_day": "Diena",
-    
-    "command_fishinfo": "Rodyti detalią žvejybos informaciją",
-    "command_fishzones": "Peržiūrėti visas žvejybos zonas ir reikalavimus",
-    "command_fishconditions": "Patikrinti dabartinio oro ir laiko poveikį",
-    "command_fishweather": "Gauti detalią oro poveikio informaciją",
-    "command_fishrarity": "Sužinoti apie žuvų retumo sistemą",
-    "command_fishstats": "Peržiūrėti dabartinį žuvų inventorių",
-    "command_fishtips": "Gauti naudingų žvejybos patarimų",
-    "command_fishseason": "Patikrinti dabartinius sezono duomenis",
-    "command_fishgear": "Patikrinti dabartinę įrangą",
-    "command_fishhelp": "Rodyti pagalbos meniu",
-    
-    "keybind_f6": "F6 - Greita žvejybos informacija",
-    "keybind_f7": "F7 - Atidaryti sutarčių meniu",
-    "keybind_f8": "F8 - Turnyro informacija",
-    "keybind_g": "G - Numesti/pakelti inkarą (valtyse)",
-    "keybind_e": "E - Grąžinti valtį (prie doko)",
     
     "zone_shallow_waters": "Seklūs vandenys",
     "zone_coral_reef": "Koralų rifas",
@@ -266,7 +249,7 @@
     "rarity_legendary_desc": "👑 LEGENDINĖ - Itin reta, milžiniška vertė (2000-4000€)",
     "rarity_mythical_desc": "🔮 MITINĖ - Ultra reta, legendinė vertė (5000-7500€)",
     
-    "usage_setweather": "Naudojimas: /setfishweather [GIEDRA|LIETUS|PERKŪNIJA|ŪKANA|SNIEGAS]",
+    "usage_setweather": "Naudojimas: /nustatytižvejybosora [GIEDRA|LIETUS|PERKŪNIJA|ŪKANA|SNIEGAS]",
     "invalid_weather": "Neteisingas oro tipas! Galimi: GIEDRA, LIETUS, PERKŪNIJA, ŪKANA, SNIEGAS, DEBESUOTA, APSINIAUKĘ",
     "weather_change_requested": "Oro kaitos užklausa: %s",
     "no_permission": "Neturite leidimo",
@@ -306,14 +289,5 @@
     
     "active_contracts_title": "📋 Aktyvūs kontraktai",
     "progress_label": "Progresas",
-    "reward_label": "Atlygis",
-    
-    "debug_raw_hour": "🕐 Valanda: %d",
-    "debug_raw_minute": "🕐 Minutė: %d", 
-    "debug_detected_period": "⏰ Aptiktas periodas: %s",
-    "debug_config_key": "💾 Konfigūracijos raktas: %s",
-    "debug_chance_bonus": "📊 Šanso bonusas: %d%%",
-    "debug_wait_multiplier": "⚡ Laukimo dauginamasis: %.2f",
-    "debug_config_found": "Rastas",
-    "debug_config_missing": "Trūksta"
+    "reward_label": "Atlygis"
 }

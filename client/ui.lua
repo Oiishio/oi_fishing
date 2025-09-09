@@ -1,12 +1,13 @@
--- client/ui.lua
--- Optimized UI and notification system
+-- client/ui.lua (Fixed - No Spam)
+-- Optimized UI and notification system with heavy spam prevention
 
 local UI = {}
 
--- Notification queue system to prevent spam
+-- Notification queue system with aggressive spam protection
 local notificationQueue = {}
 local lastNotification = 0
 local processingQueue = false
+local notificationHistory = {} -- Track recent notifications to prevent duplicates
 
 -- UI state
 local currentUI = {
@@ -15,26 +16,80 @@ local currentUI = {
     data = nil
 }
 
+-- Spam prevention settings
+local SPAM_PREVENTION = {
+    MIN_INTERVAL = 3000,           -- Minimum 3 seconds between notifications
+    DUPLICATE_TIMEOUT = 30000,     -- 30 seconds before allowing same message again
+    MAX_QUEUE_SIZE = 5,            -- Reduce queue size
+    STARTUP_DELAY = 10000          -- 10 second delay before showing any notifications
+}
+
+local systemStartTime = GetGameTimer()
+
 -- Initialize UI system
 function UI.init()
-    -- Process notification queue
+    -- Process notification queue with spam protection
     CreateThread(function()
         while true do
             UI.processNotificationQueue()
-            Wait(100) -- Check 10 times per second
+            Wait(500) -- Check every 0.5 seconds
         end
     end)
 end
 
--- Queue notification with priority and deduplication
+-- Check if we're in startup period (no notifications during startup)
+local function isStartupPeriod()
+    return (GetGameTimer() - systemStartTime) < SPAM_PREVENTION.STARTUP_DELAY
+end
+
+-- Check if notification is duplicate
+local function isDuplicateNotification(message)
+    local messageHash = tostring(message)
+    local now = GetGameTimer()
+    
+    if notificationHistory[messageHash] then
+        if now - notificationHistory[messageHash] < SPAM_PREVENTION.DUPLICATE_TIMEOUT then
+            return true -- Too recent, skip
+        end
+    end
+    
+    notificationHistory[messageHash] = now
+    return false
+end
+
+-- Clean old notification history
+local function cleanNotificationHistory()
+    local now = GetGameTimer()
+    for message, timestamp in pairs(notificationHistory) do
+        if now - timestamp > SPAM_PREVENTION.DUPLICATE_TIMEOUT then
+            notificationHistory[message] = nil
+        end
+    end
+end
+
+-- Queue notification with strict spam prevention
 function UI.queueNotification(message, type, priority)
     if not message or message == '' then return end
+    
+    -- Block all notifications during startup
+    if isStartupPeriod() then return end
+    
+    -- Block duplicate notifications
+    if isDuplicateNotification(message) then return end
     
     priority = priority or FishingConstants.NOTIFICATION_PRIORITY.NORMAL
     type = type or 'inform'
     
-    -- Check for duplicate messages
-    for _, notif in ipairs(notificationQueue) do
+    -- Only allow high priority notifications to interrupt cooldown
+    local now = GetGameTimer()
+    if priority < FishingConstants.NOTIFICATION_PRIORITY.HIGH then
+        if now - lastNotification < SPAM_PREVENTION.MIN_INTERVAL then
+            return -- Skip low priority notifications during cooldown
+        end
+    end
+    
+    -- Check for existing similar messages in queue
+    for i, notif in ipairs(notificationQueue) do
         if notif.message == message then
             -- Update priority if higher
             if priority > notif.priority then
@@ -50,7 +105,7 @@ function UI.queueNotification(message, type, priority)
         message = message,
         type = type,
         priority = priority,
-        timestamp = GetGameTimer()
+        timestamp = now
     })
     
     -- Sort by priority (higher first)
@@ -61,25 +116,39 @@ function UI.queueNotification(message, type, priority)
         return a.priority > b.priority
     end)
     
-    -- Limit queue size
-    while #notificationQueue > 10 do
+    -- Strict queue size limit
+    while #notificationQueue > SPAM_PREVENTION.MAX_QUEUE_SIZE do
         table.remove(notificationQueue, #notificationQueue)
+    end
+    
+    -- Clean old history periodically
+    if now % 60000 < 500 then -- Approximately once per minute
+        cleanNotificationHistory()
     end
 end
 
--- Process notification queue
+-- Process notification queue with strict timing
 function UI.processNotificationQueue()
     if #notificationQueue == 0 or processingQueue then return end
     
     local now = GetGameTimer()
-    if now - lastNotification < FishingConstants.INTERVALS.NOTIFICATION_COOLDOWN then return end
+    local timeSinceLastNotification = now - lastNotification
+    
+    -- Enforce minimum interval between notifications
+    if timeSinceLastNotification < SPAM_PREVENTION.MIN_INTERVAL then return end
+    
+    -- Block during startup
+    if isStartupPeriod() then return end
     
     processingQueue = true
     local notif = table.remove(notificationQueue, 1)
     
     if notif then
-        UI.showNotification(notif.message, notif.type)
-        lastNotification = now
+        -- Double check for duplicates (safety)
+        if not isDuplicateNotification(notif.message) then
+            UI.showNotification(notif.message, notif.type)
+            lastNotification = now
+        end
     end
     
     processingQueue = false
@@ -161,7 +230,7 @@ function UI.showContext(id, title, options, onBack)
     end
     
     if #validOptions == 0 then
-        UI.queueNotification('No options available', 'error')
+        UI.queueNotification('Nav pieejamas opcijas', 'error')
         return
     end
     
@@ -190,38 +259,37 @@ function UI.showAlert(title, content, confirm, cancel)
     }) == 'confirm'
 end
 
--- Enhanced fish caught notification
+-- Enhanced fish caught notification (reduced spam)
 function UI.notifyFishCaught(fishName, fishData, value)
     if not fishData then return end
     
     local emoji = FishingConstants.RARITY_EMOJIS[fishData.rarity] or '🐟'
     local fishLabel = FishingUtils.getItemLabel(fishName)
     
-    -- Different messages based on rarity
+    -- Different messages based on rarity (only for rare+ fish)
     local message
     local priority = FishingConstants.NOTIFICATION_PRIORITY.NORMAL
     local type = 'success'
     
     if fishData.rarity == 'mythical' then
-        message = ('🔮 MYTHICAL CATCH: %s! Beyond legendary!'):format(fishLabel)
+        message = ('🔮 MITINIS LAIMIKIS: %s! Pranoksta legendą!'):format(fishLabel)
         priority = FishingConstants.NOTIFICATION_PRIORITY.CRITICAL
         type = 'success'
     elseif fishData.rarity == 'legendary' then
-        message = ('👑 LEGENDARY CATCH: %s! Master angler!'):format(fishLabel)
+        message = ('👑 LEGENDINIS LAIMIKIS: %s! Meistras žvejas!'):format(fishLabel)
         priority = FishingConstants.NOTIFICATION_PRIORITY.HIGH
         type = 'success'
     elseif fishData.rarity == 'epic' then
-        message = ('💎 EPIC CATCH: %s! Incredible luck!'):format(fishLabel)
+        message = ('💎 EPIŠKAS LAIMIKIS: %s! Neįtikėtinas sėkmingumas!'):format(fishLabel)
         priority = FishingConstants.NOTIFICATION_PRIORITY.HIGH
         type = 'success'
     elseif fishData.rarity == 'rare' then
-        message = ('🌟 RARE CATCH: %s! Great find!'):format(fishLabel)
+        message = ('🌟 RETAS LAIMIKIS: %s!'):format(fishLabel)
         priority = FishingConstants.NOTIFICATION_PRIORITY.NORMAL
         type = 'success'
     else
-        message = ('%s Caught %s (%s)'):format(emoji, fishLabel, FishingUtils.formatPrice(value))
-        priority = FishingConstants.NOTIFICATION_PRIORITY.LOW
-        type = 'success'
+        -- Don't show notifications for common/uncommon fish to reduce spam
+        return
     end
     
     UI.queueNotification(message, type, priority)
@@ -230,7 +298,7 @@ function UI.notifyFishCaught(fishName, fishData, value)
     UI.playFishSound(fishData.rarity)
 end
 
--- Play sound effects
+-- Play sound effects (only for rare+ catches)
 function UI.playFishSound(rarity)
     local soundData = {
         mythical = { name = 'CHECKPOINT_PERFECT', set = 'HUD_MINI_GAME_SOUNDSET' },
@@ -269,79 +337,56 @@ end
 
 -- Standardized equipment display
 function UI.formatEquipment(item, playerLevel, isOwned)
-    local status = isOwned and '✅ OWNED' or 
-                  (item.minLevel > playerLevel and '🔒 LOCKED' or '✅ AVAILABLE')
+    local status = isOwned and '✅ TURIU' or 
+                  (item.minLevel > playerLevel and '🔒 UŽRAKINTA' or '✅ PRIEINAMA')
     
     local metadata = {
-        { label = 'Required Level', value = item.minLevel },
-        { label = 'Status', value = status }
+        { label = 'Reikalingas lygis', value = item.minLevel },
+        { label = 'Būsena', value = status }
     }
     
     -- Add specific metadata based on item type
     if item.breakChance then
-        table.insert(metadata, { label = 'Break Chance', value = item.breakChance .. '%' })
+        table.insert(metadata, { label = 'Lūžimo šansas', value = item.breakChance .. '%' })
     end
     
     if item.waitDivisor then
         local speedBonus = math.floor((1 - 1/item.waitDivisor) * 100)
-        table.insert(metadata, { label = 'Speed Bonus', value = speedBonus .. '%' })
+        table.insert(metadata, { label = 'Greičio bonusas', value = speedBonus .. '%' })
     end
     
     return {
         title = FishingUtils.getItemLabel(item.name),
-        description = 'Price: ' .. FishingUtils.formatPrice(item.price),
+        description = 'Kaina: ' .. FishingUtils.formatPrice(item.price),
         image = GetInventoryIcon and GetInventoryIcon(item.name) or nil,
         disabled = item.minLevel > playerLevel,
         metadata = metadata
     }
 end
 
--- Show environment status
+-- Show environment status (simplified)
 function UI.showEnvironmentStatus()
     local env = FishingEnvironment.getInfo()
     local info = {}
     
-    table.insert(info, ('🌤️ Weather: %s'):format(env.weather))
-    table.insert(info, ('⏰ Time: %02d:%02d (%s)'):format(env.hour, env.minute, env.timePeriod:upper()))
-    table.insert(info, ('🍂 Season: %s'):format(env.season:upper()))
+    table.insert(info, ('🌤️ Oras: %s'):format(env.weather))
+    table.insert(info, ('⏰ Laikas: %02d:%02d (%s)'):format(env.hour, env.minute, env.timePeriod:upper()))
     
-    -- Add effect summary
+    -- Only show significant bonuses/penalties
     local effects = env.effects
-    local bonuses = {}
-    
     if effects.chanceMultiplier > 1.1 then
-        table.insert(bonuses, ('+%d%% catch'):format(math.floor((effects.chanceMultiplier - 1) * 100)))
+        table.insert(info, ('📈 Bonusas: +%d%% gaudymo šansas'):format(math.floor((effects.chanceMultiplier - 1) * 100)))
     elseif effects.chanceMultiplier < 0.9 then
-        table.insert(bonuses, ('-%d%% catch'):format(math.floor((1 - effects.chanceMultiplier) * 100)))
-    end
-    
-    if effects.waitMultiplier < 0.9 then
-        table.insert(bonuses, ('+%d%% speed'):format(math.floor((1 - effects.waitMultiplier) * 100)))
-    elseif effects.waitMultiplier > 1.1 then
-        table.insert(bonuses, ('-%d%% speed'):format(math.floor((effects.waitMultiplier - 1) * 100)))
-    end
-    
-    if #bonuses > 0 then
-        table.insert(info, ('📈 Effects: %s'):format(table.concat(bonuses, ', ')))
+        table.insert(info, ('📉 Nuobauda: -%d%% gaudymo šansas'):format(math.floor((1 - effects.chanceMultiplier) * 100)))
     end
     
     UI.queueNotification(table.concat(info, '\n'), 'inform', FishingConstants.NOTIFICATION_PRIORITY.NORMAL)
 end
 
--- Batch notification for multiple events
-function UI.batchNotify(notifications, delay)
-    delay = delay or 1000
-    
-    for i, notif in ipairs(notifications) do
-        SetTimeout(i * delay, function()
-            UI.queueNotification(notif.message, notif.type, notif.priority)
-        end)
-    end
-end
-
 -- Clear notification queue
 function UI.clearQueue()
     notificationQueue = {}
+    notificationHistory = {}
 end
 
 -- Get queue status (for debugging)
@@ -349,8 +394,21 @@ function UI.getQueueStatus()
     return {
         count = #notificationQueue,
         nextNotification = notificationQueue[1] and notificationQueue[1].message or 'None',
-        lastShown = lastNotification
+        lastShown = lastNotification,
+        startupPeriod = isStartupPeriod()
     }
+end
+
+-- Silent notification for level ups only (special case)
+function UI.silentLevelNotification(level)
+    -- Only show level notifications, nothing else during startup
+    if not isStartupPeriod() then
+        UI.queueNotification(
+            ('🎉 Pasiekėte %d lygį!'):format(level),
+            'success',
+            FishingConstants.NOTIFICATION_PRIORITY.HIGH
+        )
+    end
 end
 
 -- Export

@@ -1,5 +1,5 @@
--- server/main.lua (Optimized)
--- Core server fishing logic
+-- server/main.lua (Complete Fixed Version - Anti-Spam)
+-- Core server fishing logic with notification spam prevention
 
 lib.locale()
 lib.versionCheck('https://github.com/Lunar-Scripts/lunar_fishing')
@@ -11,7 +11,9 @@ local state = {
     players = {}, -- Active fishing players
     weather = 'CLEAR',
     contracts = {},
-    tournaments = {}
+    tournaments = {},
+    playerJoinTimes = {}, -- Track when players join to prevent spam
+    currentSeason = nil
 }
 
 -- Cache for performance
@@ -43,6 +45,23 @@ function FishingServer.init()
     
     -- Initialize contracts (simplified)
     FishingServer.initContracts()
+    
+    -- Track player joins to prevent startup spam
+    AddEventHandler('esx:playerLoaded', function(playerId, xPlayer)
+        state.playerJoinTimes[playerId] = GetGameTimer()
+    end)
+    
+    AddEventHandler('QBCore:Server:PlayerLoaded', function(Player)
+        state.playerJoinTimes[Player.PlayerData.source] = GetGameTimer()
+    end)
+end
+
+-- Check if player recently joined (prevent spam)
+local function isRecentlyJoined(source)
+    local joinTime = state.playerJoinTimes[source]
+    if not joinTime then return false end
+    
+    return (GetGameTimer() - joinTime) < 30000 -- 30 seconds
 end
 
 -- Setup save system with batching
@@ -81,30 +100,34 @@ function FishingServer.setupSaveSystem()
     end)
 end
 
--- Simplified weather system
+-- Simplified weather system (less frequent changes)
 function FishingServer.initWeatherSystem()
-    local weatherCycle = { 'CLEAR', 'CLOUDY', 'OVERCAST', 'RAIN', 'CLEARING', 'CLEAR', 'FOGGY', 'CLEAR' }
+    local weatherCycle = { 'CLEAR', 'CLOUDY', 'OVERCAST', 'RAIN', 'CLEARING', 'CLEAR' }
     local weatherIndex = 1
     
     CreateThread(function()
-        Wait(5000)
+        Wait(10000) -- Initial delay to prevent startup spam
         
         while true do
-            Wait(FishingConstants.INTERVALS.WEATHER_CYCLE)
+            Wait(FishingConstants.INTERVALS.WEATHER_CYCLE * 2) -- Double interval to reduce spam
             
             weatherIndex = weatherIndex % #weatherCycle + 1
             local newWeather = weatherCycle[weatherIndex]
             
-            -- 15% chance for special weather
-            if math.random(100) <= 15 then
-                local specialWeathers = { 'THUNDER', 'SNOW', 'BLIZZARD' }
+            -- 10% chance for special weather (reduced from 15%)
+            if math.random(100) <= 10 then
+                local specialWeathers = { 'THUNDER', 'FOGGY' }
                 newWeather = FishingUtils.randomFromTable(specialWeathers)
             end
             
+            local oldWeather = state.weather
             state.weather = newWeather
-            TriggerClientEvent('lunar_fishing:weatherChanged', -1, newWeather)
             
-            print('[Fishing] Weather changed to:', newWeather)
+            -- Only send weather change if significantly different
+            if oldWeather ~= newWeather then
+                TriggerClientEvent('lunar_fishing:weatherChanged', -1, newWeather)
+                print('[Fishing] Weather changed to:', newWeather)
+            end
         end
     end)
 end
@@ -134,7 +157,7 @@ function FishingServer.setupItemHandlers()
     end
 end
 
--- Handle fishing rod usage (optimized)
+-- Handle fishing rod usage (optimized with spam prevention)
 function FishingServer.handleRodUse(source, rod)
     local player = Framework.getPlayerFromId(source)
     if not player or player:getItemCount(rod.name) == 0 or state.players[source] then
@@ -167,7 +190,7 @@ function FishingServer.handleRodUse(source, rod)
     local fishData = Config.fish[fishName]
     
     if not fishData or not player:canCarryItem(fishName, 1) then
-        TriggerClientEvent('lunar_fishing:showNotification', source, 'Inventory full!', 'error')
+        TriggerClientEvent('lunar_fishing:showNotification', source, 'Inventorius pilnas!', 'error')
         state.players[source] = nil
         return
     end
@@ -183,12 +206,16 @@ function FishingServer.handleRodUse(source, rod)
         player:addItem(fishName, 1)
         FishingServer.addPlayerLevel(player, Config.progressPerCatch)
         
-        -- Calculate value and notify
+        -- Calculate value and notify (only for rare+ fish to reduce spam)
         local fishValue = FishingUtils.getAveragePrice(fishData.price)
-        TriggerClientEvent('lunar_fishing:fishCaught', source, fishName, fishData, fishValue)
         
-        -- Log catch
-        FishingServer.logCatch(source, player, fishName, fishData, zone.blip?.name or 'Open Waters')
+        -- Only send catch notification for rare+ fish
+        if fishData.rarity ~= 'common' and fishData.rarity ~= 'uncommon' then
+            TriggerClientEvent('lunar_fishing:fishCaught', source, fishName, fishData, fishValue)
+        end
+        
+        -- Log catch (silent for common fish)
+        FishingServer.logCatch(source, player, fishName, fishData, zone.blip?.name or 'Atviras vandenynas')
         
     elseif math.random(100) <= rod.breakChance then
         -- Rod breaks
@@ -282,7 +309,7 @@ function FishingServer.selectFish(zone, effects)
     return FishingUtils.weightedRandom(weights) or 'anchovy'
 end
 
--- Add player level (optimized)
+-- Add player level (silent on join, notifications only for active players)
 function FishingServer.addPlayerLevel(player, amount)
     local identifier = player:getIdentifier()
     local currentLevel = math.floor(cache.playerLevels[identifier] or 1.0)
@@ -290,10 +317,14 @@ function FishingServer.addPlayerLevel(player, amount)
     cache.playerLevels[identifier] = (cache.playerLevels[identifier] or 1.0) + amount
     
     local newLevel = math.floor(cache.playerLevels[identifier])
-    if newLevel > currentLevel then
-        TriggerClientEvent('lunar_fishing:showNotification', player.source, locale('unlocked_level'), 'success')
+    
+    -- Only show level up notification if not recently joined and actually leveled up
+    if newLevel > currentLevel and not isRecentlyJoined(player.source) then
+        TriggerClientEvent('lunar_fishing:showNotification', player.source, 
+            ('🎉 Pasiekėte %d lygį!'):format(newLevel), 'success')
     end
     
+    -- Always send level update (for UI purposes)
     TriggerClientEvent('lunar_fishing:updateLevel', player.source, cache.playerLevels[identifier])
 end
 
@@ -302,7 +333,7 @@ function FishingServer.getPlayerLevel(player)
     return cache.playerLevels[player:getIdentifier()] or 1.0
 end
 
--- Create new player record
+-- Create new player record (silent)
 function FishingServer.createPlayer(identifier)
     cache.playerLevels[identifier] = 1.0
     MySQL.insert.await('INSERT INTO lunar_fishing (user_identifier, xp) VALUES(?, ?)', {
@@ -310,17 +341,22 @@ function FishingServer.createPlayer(identifier)
     })
 end
 
--- Log fishing catch (simplified)
+-- Log fishing catch (only for rare+ catches to reduce spam)
 function FishingServer.logCatch(source, player, fishName, fishData, zoneName)
     if SvConfig.Webhook == 'WEBHOOK_HERE' then return end
     
-    local message = ('Caught %s (%s) in %s'):format(
+    -- Only log rare+ catches to reduce webhook spam
+    if fishData.rarity == 'common' or fishData.rarity == 'uncommon' then
+        return
+    end
+    
+    local message = ('Pagavo %s (%s) zonoje %s'):format(
         FishingUtils.getItemLabel(fishName),
         fishData.rarity,
         zoneName
     )
     
-    -- Simple webhook log (you can expand this)
+    -- Simple webhook log
     local embed = {
         title = GetPlayerName(source) .. ' (' .. player:getIdentifier() .. ')',
         description = message,
@@ -334,36 +370,37 @@ function FishingServer.logCatch(source, player, fishName, fishData, zoneName)
     )
 end
 
--- Simple contract system
+-- Simple contract system (no spam notifications)
 function FishingServer.initContracts()
     local function generateContracts()
         state.contracts = {
             {
                 id = 'catch_any_5',
-                title = 'Catch 5 Fish',
-                description = 'Catch any 5 fish for bonus reward.',
+                title = 'Pagauti 5 žuvis',
+                description = 'Pagaukite bet kokias 5 žuvis bonuso atlygiui.',
                 type = 'catch_any',
                 target = { amount = 5 },
                 reward = { money = 500, xp = 0.1 }
             },
             {
                 id = 'catch_value_1000',
-                title = 'High Value Catch',
-                description = 'Catch fish worth at least €1000 total.',
+                title = 'Aukštos vertės laimikis',
+                description = 'Pagaukite žuvų už bent 1000€ iš viso.',
                 type = 'catch_value',
                 target = { value = 1000 },
                 reward = { money = 800, xp = 0.15 }
             },
             {
                 id = 'catch_rare_3',
-                title = 'Rare Fish Hunter',
-                description = 'Catch 3 rare or better fish.',
+                title = 'Retų žuvų medžiotojas',
+                description = 'Pagaukite 3 retas ar geresnes žuvis.',
                 type = 'catch_rarity',
                 target = { rarity = 'rare', amount = 3 },
                 reward = { money = 1200, xp = 0.2 }
             }
         }
         
+        -- Send contracts update silently (no notifications)
         TriggerClientEvent('lunar_fishing:contractsRefreshed', -1, state.contracts)
     end
     
@@ -376,7 +413,7 @@ function FishingServer.initContracts()
     end, FishingConstants.INTERVALS.CONTRACT_REFRESH)
 end
 
--- Callbacks
+-- Callbacks (all silent data transfers)
 lib.callback.register('lunar_fishing:getLevel', function(source)
     local player = Framework.getPlayerFromId(source)
     if not player then return 1.0 end
@@ -411,7 +448,7 @@ lib.callback.register('lunar_fishing:getEnvironmentalEffects', function(source)
     return FishingServer.calculateEnvironmentalEffects(nil, clientHour)
 end)
 
--- Admin commands
+-- Admin commands (Lithuanian messages)
 RegisterNetEvent('lunar_fishing:setWeather', function(weather)
     local source = source
     local player = Framework.getPlayerFromId(source)
@@ -419,23 +456,23 @@ RegisterNetEvent('lunar_fishing:setWeather', function(weather)
     if not player then return end
     
     -- Add proper permission check here
-    local hasPermission = true -- Placeholder
+    local hasPermission = true -- Placeholder - implement your permission system
     
     if not hasPermission then
-        TriggerClientEvent('lunar_fishing:showNotification', source, 'No permission', 'error')
+        TriggerClientEvent('lunar_fishing:showNotification', source, 'Neturite leidimo', 'error')
         return
     end
     
     if not FishingUtils.tableContains(FishingConstants.WEATHER_TYPES, weather) then
-        TriggerClientEvent('lunar_fishing:showNotification', source, 'Invalid weather type', 'error')
+        TriggerClientEvent('lunar_fishing:showNotification', source, 'Neteisingas oro tipas', 'error')
         return
     end
     
     state.weather = weather
     TriggerClientEvent('lunar_fishing:weatherChanged', -1, weather)
-    TriggerClientEvent('lunar_fishing:showNotification', source, ('Weather set to: %s'):format(weather), 'success')
+    TriggerClientEvent('lunar_fishing:showNotification', source, ('Oras nustatytas į: %s'):format(weather), 'success')
     
-    print(('[Fishing] Admin %s changed weather to: %s'):format(GetPlayerName(source), weather))
+    print(('[Fishing] Admin %s pakeite orą į: %s'):format(GetPlayerName(source), weather))
 end)
 
 RegisterNetEvent('lunar_fishing:setSeason', function(season)
@@ -448,20 +485,109 @@ RegisterNetEvent('lunar_fishing:setSeason', function(season)
     local hasPermission = true -- Placeholder
     
     if not hasPermission then
-        TriggerClientEvent('lunar_fishing:showNotification', source, 'No permission', 'error')
+        TriggerClientEvent('lunar_fishing:showNotification', source, 'Neturite leidimo', 'error')
         return
     end
     
     if not Config.seasons[season] then
-        TriggerClientEvent('lunar_fishing:showNotification', source, 'Invalid season', 'error')
+        TriggerClientEvent('lunar_fishing:showNotification', source, 'Neteisingas sezonas', 'error')
         return
     end
     
     Config.forcedSeason = season
     TriggerClientEvent('lunar_fishing:seasonChanged', -1, season)
-    TriggerClientEvent('lunar_fishing:showNotification', source, ('Season set to: %s'):format(season:upper()), 'success')
+    TriggerClientEvent('lunar_fishing:showNotification', source, ('Sezonas nustatytas į: %s'):format(season:upper()), 'success')
     
-    print(('[Fishing] Admin %s changed season to: %s'):format(GetPlayerName(source), season))
+    print(('[Fishing] Admin %s pakeite sezoną į: %s'):format(GetPlayerName(source), season))
+end)
+
+-- Clean up player data on disconnect
+AddEventHandler('esx:playerDropped', function(playerId)
+    state.players[playerId] = nil
+    state.playerJoinTimes[playerId] = nil
+end)
+
+AddEventHandler('QBCore:Server:OnPlayerUnload', function(playerId)
+    state.players[playerId] = nil
+    state.playerJoinTimes[playerId] = nil
+end)
+
+AddEventHandler('playerDropped', function(reason)
+    local source = source
+    state.players[source] = nil
+    state.playerJoinTimes[source] = nil
+end)
+
+-- Performance monitoring and cleanup
+CreateThread(function()
+    local startTime = GetGameTimer()
+    
+    while true do
+        Wait(300000) -- Every 5 minutes
+        
+        local memoryUsage = collectgarbage('count')
+        local uptime = math.floor((GetGameTimer() - startTime) / 1000 / 60) -- Minutes
+        
+        -- Clean up old player join times (older than 1 hour)
+        local now = GetGameTimer()
+        for playerId, joinTime in pairs(state.playerJoinTimes) do
+            if now - joinTime > 3600000 then -- 1 hour
+                state.playerJoinTimes[playerId] = nil
+            end
+        end
+        
+        -- Periodic garbage collection
+        if memoryUsage > 50000 then -- 50MB
+            collectgarbage('collect')
+        end
+        
+        -- Debug info (only in development)
+        if GetConvar('fishing_debug', '0') == '1' then
+            print(('[Fishing] Uptime: %dm, Memory: %.2fMB, Active Players: %d'):format(
+                uptime, memoryUsage / 1024, #GetPlayers()
+            ))
+        end
+    end
+end)
+
+-- Season auto-detection if not forced
+CreateThread(function()
+    if Config.forcedSeason then return end -- Skip if forced season is set
+    
+    while true do
+        Wait(3600000) -- Check every hour
+        
+        local currentMonth = tonumber(os.date('%m'))
+        local newSeason = FishingUtils.getSeason(currentMonth)
+        
+        if newSeason ~= (state.currentSeason or 'spring') then
+            state.currentSeason = newSeason
+            -- Silent season change - no notifications to prevent spam
+            TriggerClientEvent('lunar_fishing:seasonChanged', -1, newSeason)
+        end
+    end
+end)
+
+-- Resource health check and emergency save
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName == GetCurrentResourceName() then
+        -- Emergency save before shutdown
+        local query = 'UPDATE lunar_fishing SET xp = ? WHERE user_identifier = ?'
+        local parameters = {}
+        local count = 0
+        
+        for identifier, xp in pairs(cache.playerLevels) do
+            count = count + 1
+            parameters[count] = { xp, identifier }
+        end
+        
+        if count > 0 then
+            print('[Fishing] Emergency save: ' .. count .. ' records')
+            MySQL.prepare.await(query, parameters)
+        end
+        
+        print('[Fishing] Resource stopped cleanly')
+    end
 end)
 
 -- Export functions for other resources
@@ -512,6 +638,20 @@ end)
 -- Global functions for compatibility
 AddPlayerLevel = FishingServer.addPlayerLevel
 GetPlayerLevel = FishingServer.getPlayerLevel
+
+-- Version check and startup info
+CreateThread(function()
+    Wait(5000)
+    
+    print('==================================================')
+    print('  🎣 Lunar Fishing Script')
+    print('  Version: 2.0.0 ')
+    print('  Features: Majamis nebeciulpia uz dvacoka')
+    print('  Weather System: ' .. (state.weather or 'CLEAR'))
+    print('  Forced Season: ' .. (Config.forcedSeason or 'Auto'))
+    print('  Database Records: ' .. (#cache.playerLevels or 0))
+    print('==================================================')
+end)
 
 -- Initialize when resource starts
 CreateThread(function()

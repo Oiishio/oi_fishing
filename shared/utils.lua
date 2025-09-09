@@ -1,7 +1,8 @@
 -- shared/utils.lua
 -- Optimized shared utility functions
 
-local Utils = {}
+-- Make it global so all files can access it
+FishingUtils = {}
 
 -- Cache for frequently accessed data
 local cache = {
@@ -11,7 +12,7 @@ local cache = {
 }
 
 -- Fast table size calculation with caching
-function Utils.getTableSize(t)
+function FishingUtils.getTableSize(t)
     if not t then return 0 end
     
     local key = tostring(t)
@@ -29,14 +30,14 @@ function Utils.getTableSize(t)
 end
 
 -- Optimized random selection from table
-function Utils.randomFromTable(t)
+function FishingUtils.randomFromTable(t)
     if not t or #t == 0 then return nil, nil end
     local index = math.random(1, #t)
     return t[index], index
 end
 
 -- Weighted random selection (for fish catching)
-function Utils.weightedRandom(items)
+function FishingUtils.weightedRandom(items)
     local totalWeight = 0
     local weights = {}
     
@@ -58,19 +59,19 @@ function Utils.weightedRandom(items)
 end
 
 -- Efficient distance calculation (no sqrt for comparisons)
-function Utils.distanceSquared(pos1, pos2)
+function FishingUtils.distanceSquared(pos1, pos2)
     local dx = pos1.x - pos2.x
     local dy = pos1.y - pos2.y
     local dz = pos1.z - pos2.z
     return dx*dx + dy*dy + dz*dz
 end
 
-function Utils.distance(pos1, pos2)
-    return math.sqrt(Utils.distanceSquared(pos1, pos2))
+function FishingUtils.distance(pos1, pos2)
+    return math.sqrt(FishingUtils.distanceSquared(pos1, pos2))
 end
 
 -- Optimized item label lookup with caching
-function Utils.getItemLabel(name)
+function FishingUtils.getItemLabel(name)
     if not name then return 'Unknown' end
     
     -- Check cache first
@@ -83,7 +84,11 @@ function Utils.getItemLabel(name)
     if IsDuplicityVersion() then -- Server side
         label = Framework and Framework.getItemLabel and Framework.getItemLabel(name) or name
     else -- Client side  
-        label = exports.ox_inventory and exports.ox_inventory:Items()[name]?.label or name
+        if exports.ox_inventory then
+            label = exports.ox_inventory:Items()[name]?.label or name
+        else
+            label = name
+        end
     end
     
     cache.itemLabels[name] = label or name
@@ -91,7 +96,7 @@ function Utils.getItemLabel(name)
 end
 
 -- Format price range consistently
-function Utils.formatPrice(price)
+function FishingUtils.formatPrice(price)
     if type(price) == 'number' then
         return ('€%d'):format(price)
     elseif type(price) == 'table' and price.min and price.max then
@@ -101,7 +106,7 @@ function Utils.formatPrice(price)
 end
 
 -- Get average price for calculations
-function Utils.getAveragePrice(price)
+function FishingUtils.getAveragePrice(price)
     if type(price) == 'number' then
         return price
     elseif type(price) == 'table' and price.min and price.max then
@@ -111,18 +116,18 @@ function Utils.getAveragePrice(price)
 end
 
 -- Clamp value between min and max
-function Utils.clamp(value, min, max)
+function FishingUtils.clamp(value, min, max)
     return math.max(min, math.min(max, value))
 end
 
 -- Round to decimal places
-function Utils.round(value, decimals)
+function FishingUtils.round(value, decimals)
     local mult = 10 ^ (decimals or 0)
     return math.floor(value * mult + 0.5) / mult
 end
 
 -- Check if table contains value
-function Utils.tableContains(t, value)
+function FishingUtils.tableContains(t, value)
     if not t then return false end
     for _, v in pairs(t) do
         if v == value then return true end
@@ -131,22 +136,22 @@ function Utils.tableContains(t, value)
 end
 
 -- Deep copy table (for config modifications)
-function Utils.deepCopy(t)
+function FishingUtils.deepCopy(t)
     if type(t) ~= 'table' then return t end
     
     local result = {}
     for k, v in pairs(t) do
-        result[k] = Utils.deepCopy(v)
+        result[k] = FishingUtils.deepCopy(v)
     end
     return result
 end
 
 -- Merge two tables (second overrides first)
-function Utils.mergeTables(t1, t2)
-    if not t1 then return Utils.deepCopy(t2) end
-    if not t2 then return Utils.deepCopy(t1) end
+function FishingUtils.mergeTables(t1, t2)
+    if not t1 then return FishingUtils.deepCopy(t2) end
+    if not t2 then return FishingUtils.deepCopy(t1) end
     
-    local result = Utils.deepCopy(t1)
+    local result = FishingUtils.deepCopy(t1)
     for k, v in pairs(t2) do
         result[k] = v
     end
@@ -154,7 +159,7 @@ function Utils.mergeTables(t1, t2)
 end
 
 -- Get time period from hour
-function Utils.getTimePeriod(hour)
+function FishingUtils.getTimePeriod(hour)
     if hour >= 5 and hour <= 7 then return FishingConstants.TIME_PERIODS.DAWN
     elseif hour >= 8 and hour <= 11 then return FishingConstants.TIME_PERIODS.MORNING
     elseif hour >= 12 and hour <= 14 then return FishingConstants.TIME_PERIODS.NOON
@@ -165,7 +170,7 @@ function Utils.getTimePeriod(hour)
 end
 
 -- Get season from month
-function Utils.getSeason(month)
+function FishingUtils.getSeason(month)
     if not month then month = IsDuplicityVersion() and tonumber(os.date('%m')) or GetClockMonth() end
     
     if month >= 3 and month <= 5 then return FishingConstants.SEASONS.SPRING
@@ -175,14 +180,14 @@ function Utils.getSeason(month)
 end
 
 -- Clear cache (call when items are added/removed)
-function Utils.clearCache()
+function FishingUtils.clearCache()
     cache.itemLabels = {}
     cache.tableSize = {}
     cache.lastUpdate = GetGameTimer and GetGameTimer() or os.time()
 end
 
 -- Batch operation helper
-function Utils.batch(items, batchSize, fn)
+function FishingUtils.batch(items, batchSize, fn)
     batchSize = batchSize or 10
     local batches = {}
     
@@ -200,7 +205,7 @@ function Utils.batch(items, batchSize, fn)
 end
 
 -- Simple debounce function
-function Utils.debounce(fn, delay)
+function FishingUtils.debounce(fn, delay)
     local timer = nil
     return function(...)
         local args = {...}
@@ -215,7 +220,7 @@ function Utils.debounce(fn, delay)
 end
 
 -- Throttle function calls
-function Utils.throttle(fn, delay)
+function FishingUtils.throttle(fn, delay)
     local last = 0
     return function(...)
         local now = GetGameTimer and GetGameTimer() or os.clock() * 1000
@@ -226,6 +231,7 @@ function Utils.throttle(fn, delay)
     end
 end
 
--- Export
-_G.FishingUtils = Utils
-return Utils
+-- Also create Utils alias for compatibility
+Utils = FishingUtils
+
+return FishingUtils

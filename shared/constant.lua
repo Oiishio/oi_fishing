@@ -1,10 +1,11 @@
 -- shared/constants.lua
 -- All constants and enums in one place
 
-local Constants = {}
+-- Make it global so all files can access it
+FishingConstants = {}
 
 -- Update intervals (milliseconds)
-Constants.INTERVALS = {
+FishingConstants.INTERVALS = {
     ENVIRONMENT_UPDATE = 30000,  -- 30 seconds
     NOTIFICATION_COOLDOWN = 2000, -- 2 seconds
     WEATHER_CYCLE = 600000,      -- 10 minutes
@@ -13,7 +14,7 @@ Constants.INTERVALS = {
 }
 
 -- Rarity system
-Constants.RARITY = {
+FishingConstants.RARITY = {
     COMMON = 1,
     UNCOMMON = 2,
     RARE = 3,
@@ -22,7 +23,7 @@ Constants.RARITY = {
     MYTHICAL = 6
 }
 
-Constants.RARITY_NAMES = {
+FishingConstants.RARITY_NAMES = {
     [1] = 'common',
     [2] = 'uncommon', 
     [3] = 'rare',
@@ -31,7 +32,7 @@ Constants.RARITY_NAMES = {
     [6] = 'mythical'
 }
 
-Constants.RARITY_EMOJIS = {
+FishingConstants.RARITY_EMOJIS = {
     common = '🐟',
     uncommon = '🐠',
     rare = '🌟', 
@@ -41,12 +42,12 @@ Constants.RARITY_EMOJIS = {
 }
 
 -- Weather types
-Constants.WEATHER_TYPES = {
+FishingConstants.WEATHER_TYPES = {
     'CLEAR', 'CLOUDY', 'OVERCAST', 'RAIN', 'THUNDER', 'FOGGY', 'SNOW', 'BLIZZARD'
 }
 
 -- Time periods
-Constants.TIME_PERIODS = {
+FishingConstants.TIME_PERIODS = {
     NIGHT = 'night',
     DAWN = 'dawn', 
     MORNING = 'morning',
@@ -57,7 +58,7 @@ Constants.TIME_PERIODS = {
 }
 
 -- Seasons
-Constants.SEASONS = {
+FishingConstants.SEASONS = {
     SPRING = 'spring',
     SUMMER = 'summer', 
     AUTUMN = 'autumn',
@@ -65,7 +66,7 @@ Constants.SEASONS = {
 }
 
 -- Notification priorities
-Constants.NOTIFICATION_PRIORITY = {
+FishingConstants.NOTIFICATION_PRIORITY = {
     LOW = 1,
     NORMAL = 2,
     HIGH = 3,
@@ -73,7 +74,7 @@ Constants.NOTIFICATION_PRIORITY = {
 }
 
 -- Keybind names
-Constants.KEYBINDS = {
+FishingConstants.KEYBINDS = {
     FISHING_INFO = 'fishing_info',
     CONTRACTS = 'fishing_contracts',
     TOURNAMENT = 'tournament_info',
@@ -81,6 +82,5 @@ Constants.KEYBINDS = {
     RETURN_BOAT = 'fishing_interaction'
 }
 
--- Export
-_G.FishingConstants = Constants
-return Constants
+-- Don't need to export since it's already global
+return FishingConstants
