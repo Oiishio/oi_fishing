@@ -1,5 +1,5 @@
 -- shared/utils.lua
--- Optimized shared utility functions
+-- Optimized shared utility functions (works on both server and client)
 
 -- Make it global so all files can access it
 FishingUtils = {}
@@ -38,6 +38,8 @@ end
 
 -- Weighted random selection (for fish catching)
 function FishingUtils.weightedRandom(items)
+    if not items then return nil end
+    
     local totalWeight = 0
     local weights = {}
     
@@ -82,11 +84,28 @@ function FishingUtils.getItemLabel(name)
     -- Get from framework and cache result
     local label
     if IsDuplicityVersion() then -- Server side
-        label = Framework and Framework.getItemLabel and Framework.getItemLabel(name) or name
-    else -- Client side  
-        if exports.ox_inventory then
-            label = exports.ox_inventory:Items()[name]?.label or name
+        if Framework and Framework.getItemLabel then
+            label = Framework.getItemLabel(name)
         else
+            label = name
+        end
+    else -- Client side  
+        -- Try different inventory systems
+        pcall(function()
+            if GetResourceState('ox_inventory') == 'started' then
+                local items = exports.ox_inventory:Items()
+                label = items[name] and items[name].label
+            elseif GetResourceState('qb-inventory') == 'started' then
+                label = exports['qb-inventory']:GetItemLabel(name)
+            elseif GetResourceState('ps-inventory') == 'started' then
+                label = exports['ps-inventory']:GetItemLabel(name)
+            elseif GetResourceState('qs-inventory') == 'started' then
+                local items = exports['qs-inventory']:GetItemList()
+                label = items[name] and items[name].label
+            end
+        end)
+        
+        if not label then
             label = name
         end
     end
@@ -160,30 +179,61 @@ end
 
 -- Get time period from hour
 function FishingUtils.getTimePeriod(hour)
-    if hour >= 5 and hour <= 7 then return FishingConstants.TIME_PERIODS.DAWN
-    elseif hour >= 8 and hour <= 11 then return FishingConstants.TIME_PERIODS.MORNING
-    elseif hour >= 12 and hour <= 14 then return FishingConstants.TIME_PERIODS.NOON
-    elseif hour >= 15 and hour <= 17 then return FishingConstants.TIME_PERIODS.AFTERNOON
-    elseif hour >= 18 and hour <= 20 then return FishingConstants.TIME_PERIODS.DUSK
-    elseif hour >= 21 or hour <= 4 then return FishingConstants.TIME_PERIODS.NIGHT
-    else return FishingConstants.TIME_PERIODS.DAY end
+    -- Use constants if available, otherwise fallback
+    local TIME_PERIODS = FishingConstants and FishingConstants.TIME_PERIODS or {
+        DAWN = 'dawn',
+        MORNING = 'morning',
+        NOON = 'noon',
+        AFTERNOON = 'afternoon',
+        DUSK = 'dusk',
+        NIGHT = 'night',
+        DAY = 'day'
+    }
+    
+    if hour >= 5 and hour <= 7 then return TIME_PERIODS.DAWN
+    elseif hour >= 8 and hour <= 11 then return TIME_PERIODS.MORNING
+    elseif hour >= 12 and hour <= 14 then return TIME_PERIODS.NOON
+    elseif hour >= 15 and hour <= 17 then return TIME_PERIODS.AFTERNOON
+    elseif hour >= 18 and hour <= 20 then return TIME_PERIODS.DUSK
+    elseif hour >= 21 or hour <= 4 then return TIME_PERIODS.NIGHT
+    else return TIME_PERIODS.DAY end
 end
 
 -- Get season from month
 function FishingUtils.getSeason(month)
-    if not month then month = IsDuplicityVersion() and tonumber(os.date('%m')) or GetClockMonth() end
+    -- Use constants if available, otherwise fallback
+    local SEASONS = FishingConstants and FishingConstants.SEASONS or {
+        SPRING = 'spring',
+        SUMMER = 'summer',
+        AUTUMN = 'autumn',
+        WINTER = 'winter'
+    }
     
-    if month >= 3 and month <= 5 then return FishingConstants.SEASONS.SPRING
-    elseif month >= 6 and month <= 8 then return FishingConstants.SEASONS.SUMMER
-    elseif month >= 9 and month <= 11 then return FishingConstants.SEASONS.AUTUMN
-    else return FishingConstants.SEASONS.WINTER end
+    if not month then 
+        if IsDuplicityVersion() then
+            month = tonumber(os.date('%m'))
+        else
+            month = GetClockMonth()
+        end
+    end
+    
+    if month >= 3 and month <= 5 then return SEASONS.SPRING
+    elseif month >= 6 and month <= 8 then return SEASONS.SUMMER
+    elseif month >= 9 and month <= 11 then return SEASONS.AUTUMN
+    else return SEASONS.WINTER end
 end
 
 -- Clear cache (call when items are added/removed)
 function FishingUtils.clearCache()
     cache.itemLabels = {}
     cache.tableSize = {}
-    cache.lastUpdate = GetGameTimer and GetGameTimer() or os.time()
+    
+    -- Use appropriate timer based on environment
+    if IsDuplicityVersion() then
+        cache.lastUpdate = os.time()
+    else
+        cache.lastUpdate = GetGameTimer and GetGameTimer() or os.time()
+    end
 end
 
 -- Batch operation helper
@@ -210,12 +260,28 @@ function FishingUtils.debounce(fn, delay)
     return function(...)
         local args = {...}
         if timer then
-            ClearTimeout(timer)
+            if IsDuplicityVersion() then
+                -- Server side - would need a proper timer implementation
+                -- For now, just call directly
+                fn(table.unpack(args))
+            else
+                -- Client side
+                ClearTimeout(timer)
+                timer = SetTimeout(function()
+                    fn(table.unpack(args))
+                    timer = nil
+                end, delay)
+            end
+        else
+            if not IsDuplicityVersion() then
+                timer = SetTimeout(function()
+                    fn(table.unpack(args))
+                    timer = nil
+                end, delay)
+            else
+                fn(table.unpack(args))
+            end
         end
-        timer = SetTimeout(function()
-            fn(table.unpack(args))
-            timer = nil
-        end, delay)
     end
 end
 
@@ -223,12 +289,56 @@ end
 function FishingUtils.throttle(fn, delay)
     local last = 0
     return function(...)
-        local now = GetGameTimer and GetGameTimer() or os.clock() * 1000
+        local now
+        if IsDuplicityVersion() then
+            now = os.clock() * 1000
+        else
+            now = GetGameTimer and GetGameTimer() or os.clock() * 1000
+        end
+        
         if now - last >= delay then
             last = now
             return fn(...)
         end
     end
+end
+
+-- Safe string formatting
+function FishingUtils.safeFormat(str, ...)
+    local success, result = pcall(string.format, str, ...)
+    if success then
+        return result
+    else
+        return str -- Return original string if formatting fails
+    end
+end
+
+-- Check if value is numeric
+function FishingUtils.isNumeric(value)
+    return type(value) == 'number' or (type(value) == 'string' and tonumber(value) ~= nil)
+end
+
+-- Safe number conversion
+function FishingUtils.toNumber(value, default)
+    local num = tonumber(value)
+    return num or (default or 0)
+end
+
+-- Safe table access
+function FishingUtils.safeGet(table, key, default)
+    if type(table) == 'table' and table[key] ~= nil then
+        return table[key]
+    end
+    return default
+end
+
+-- Generate UUID (simple version)
+function FishingUtils.generateUUID()
+    local template ='xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
+    return string.gsub(template, '[xy]', function (c)
+        local v = (c == 'x') and math.random(0, 0xf) or math.random(8, 0xb)
+        return string.format('%x', v)
+    end)
 end
 
 -- Also create Utils alias for compatibility

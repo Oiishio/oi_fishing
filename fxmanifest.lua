@@ -13,26 +13,25 @@ files {
 
 shared_scripts {
     '@ox_lib/init.lua',
-    'shared/constants.lua',  -- Load constants first
-    'shared/utils.lua',      -- Then utils
+    'shared/constant.lua',   -- Load constants first
+    'shared/utils.lua',      -- Then shared utils
     'config/config.lua'      -- Then config
 }
 
 client_scripts {
     'framework/**/client.lua',
     'config/cl_edit.lua',
+    'utils/utils.lua',       -- Client-side utils (separate from shared)
     'client/environment.lua',  
     'client/ui.lua',
     'client/level.lua',        
     'client/main.lua',
-    'client/*.lua'             -- Load other client files after main ones
+    'client/*.lua'           -- Load other client files after main ones
 }
 
 server_scripts {
     'framework/**/server.lua',
     '@oxmysql/lib/MySQL.lua',
-    'utils/sv_main.lua',
     'config/sv_config.lua',
-    'locales/*.lua',
     'server/*.lua'
 }

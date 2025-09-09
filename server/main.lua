@@ -1,8 +1,22 @@
--- server/main.lua (Complete Fixed Version - Anti-Spam)
--- Core server fishing logic with notification spam prevention
+local currentMonth = tonumber(os.date-- server/main.lua (Fixed - Database and Constants Issues)
+-- Core server fishing logic with proper database handling
 
 lib.locale()
 lib.versionCheck('https://github.com/Lunar-Scripts/lunar_fishing')
+
+-- Safe constants access with fallbacks
+local WEATHER_CYCLE_INTERVAL = 600000 -- 10 minutes fallback
+local CONTRACT_REFRESH_INTERVAL = 3600000 -- 1 hour fallback
+
+-- Initialize constants with fallbacks once they're available
+CreateThread(function()
+    Wait(1000) -- Wait for shared scripts to load
+    
+    if FishingConstants and FishingConstants.INTERVALS then
+        WEATHER_CYCLE_INTERVAL = FishingConstants.INTERVALS.WEATHER_CYCLE
+        CONTRACT_REFRESH_INTERVAL = FishingConstants.INTERVALS.CONTRACT_REFRESH
+    end
+end)
 
 local FishingServer = {}
 
@@ -109,7 +123,7 @@ function FishingServer.initWeatherSystem()
         Wait(10000) -- Initial delay to prevent startup spam
         
         while true do
-            Wait(FishingConstants.INTERVALS.WEATHER_CYCLE * 2) -- Double interval to reduce spam
+            Wait(WEATHER_CYCLE_INTERVAL * 2) -- Double interval to reduce spam
             
             weatherIndex = weatherIndex % #weatherCycle + 1
             local newWeather = weatherCycle[weatherIndex]
@@ -333,12 +347,22 @@ function FishingServer.getPlayerLevel(player)
     return cache.playerLevels[player:getIdentifier()] or 1.0
 end
 
--- Create new player record (silent)
+-- Create new player record (fixed - use INSERT IGNORE to prevent duplicates)
 function FishingServer.createPlayer(identifier)
     cache.playerLevels[identifier] = 1.0
-    MySQL.insert.await('INSERT INTO lunar_fishing (user_identifier, xp) VALUES(?, ?)', {
+    
+    -- Use INSERT IGNORE to prevent duplicate key errors
+    local success = MySQL.insert.await('INSERT IGNORE INTO lunar_fishing (user_identifier, xp) VALUES(?, ?)', {
         identifier, cache.playerLevels[identifier]
     })
+    
+    -- If INSERT IGNORE failed (record already exists), just load the existing value
+    if not success then
+        local existing = MySQL.scalar.await('SELECT xp FROM lunar_fishing WHERE user_identifier = ?', {identifier})
+        if existing then
+            cache.playerLevels[identifier] = existing
+        end
+    end
 end
 
 -- Log fishing catch (only for rare+ catches to reduce spam)
@@ -407,10 +431,10 @@ function FishingServer.initContracts()
     -- Generate initial contracts
     generateContracts()
     
-    -- Refresh every hour
+    -- Refresh every hour using safe interval
     SetInterval(function()
         generateContracts()
-    end, FishingConstants.INTERVALS.CONTRACT_REFRESH)
+    end, CONTRACT_REFRESH_INTERVAL)
 end
 
 -- Callbacks (all silent data transfers)
@@ -463,7 +487,9 @@ RegisterNetEvent('lunar_fishing:setWeather', function(weather)
         return
     end
     
-    if not FishingUtils.tableContains(FishingConstants.WEATHER_TYPES, weather) then
+    -- Safe weather types check with fallback
+    local weatherTypes = { 'CLEAR', 'CLOUDY', 'OVERCAST', 'RAIN', 'THUNDER', 'FOGGY', 'SNOW', 'BLIZZARD' }
+    if not FishingUtils.tableContains(weatherTypes, weather) then
         TriggerClientEvent('lunar_fishing:showNotification', source, 'Neteisingas oro tipas', 'error')
         return
     end
@@ -596,7 +622,8 @@ exports('getCurrentWeather', function()
 end)
 
 exports('setWeather', function(weather)
-    if FishingUtils.tableContains(FishingConstants.WEATHER_TYPES, weather) then
+    local weatherTypes = { 'CLEAR', 'CLOUDY', 'OVERCAST', 'RAIN', 'THUNDER', 'FOGGY', 'SNOW', 'BLIZZARD' }
+    if FishingUtils.tableContains(weatherTypes, weather) then
         state.weather = weather
         TriggerClientEvent('lunar_fishing:weatherChanged', -1, weather)
         return true
@@ -609,7 +636,7 @@ exports('getWeatherEffects', function()
 end)
 
 exports('getCurrentSeason', function()
-    return Config.forcedSeason or FishingUtils.getSeason()
+    return Config.forcedSeason or (FishingUtils and FishingUtils.getSeason and FishingUtils.getSeason() or 'spring')
 end)
 
 exports('setSeason', function(season)
@@ -643,13 +670,18 @@ GetPlayerLevel = FishingServer.getPlayerLevel
 CreateThread(function()
     Wait(5000)
     
+    local playerCount = 0
+    for _ in pairs(cache.playerLevels) do
+        playerCount = playerCount + 1
+    end
+    
     print('==================================================')
     print('  🎣 Lunar Fishing Script')
     print('  Version: 2.0.0 ')
-    print('  Features: Majamis nebeciulpia uz dvacoka')
+    print('  Features: Enhanced with proper error handling')
     print('  Weather System: ' .. (state.weather or 'CLEAR'))
     print('  Forced Season: ' .. (Config.forcedSeason or 'Auto'))
-    print('  Database Records: ' .. (#cache.playerLevels or 0))
+    print('  Database Records: ' .. playerCount)
     print('==================================================')
 end)
 

@@ -1,7 +1,38 @@
--- client/ui.lua (Fixed - No Spam)
+-- client/ui.lua (Fixed - Safe Constants Access)
 -- Optimized UI and notification system with heavy spam prevention
 
 local UI = {}
+
+-- Safe constants with fallbacks
+local NOTIFICATION_PRIORITY = {
+    LOW = 1,
+    NORMAL = 2,
+    HIGH = 3,
+    CRITICAL = 4
+}
+
+local RARITY_EMOJIS = {
+    common = '🐟',
+    uncommon = '🐠',
+    rare = '🌟', 
+    epic = '💎',
+    legendary = '👑',
+    mythical = '🔮'
+}
+
+-- Initialize constants once they're available
+CreateThread(function()
+    Wait(1000) -- Wait for shared scripts to load
+    
+    if FishingConstants then
+        if FishingConstants.NOTIFICATION_PRIORITY then
+            NOTIFICATION_PRIORITY = FishingConstants.NOTIFICATION_PRIORITY
+        end
+        if FishingConstants.RARITY_EMOJIS then
+            RARITY_EMOJIS = FishingConstants.RARITY_EMOJIS
+        end
+    end
+end)
 
 -- Notification queue system with aggressive spam protection
 local notificationQueue = {}
@@ -77,12 +108,12 @@ function UI.queueNotification(message, type, priority)
     -- Block duplicate notifications
     if isDuplicateNotification(message) then return end
     
-    priority = priority or FishingConstants.NOTIFICATION_PRIORITY.NORMAL
+    priority = priority or NOTIFICATION_PRIORITY.NORMAL
     type = type or 'inform'
     
     -- Only allow high priority notifications to interrupt cooldown
     local now = GetGameTimer()
-    if priority < FishingConstants.NOTIFICATION_PRIORITY.HIGH then
+    if priority < NOTIFICATION_PRIORITY.HIGH then
         if now - lastNotification < SPAM_PREVENTION.MIN_INTERVAL then
             return -- Skip low priority notifications during cooldown
         end
@@ -263,29 +294,29 @@ end
 function UI.notifyFishCaught(fishName, fishData, value)
     if not fishData then return end
     
-    local emoji = FishingConstants.RARITY_EMOJIS[fishData.rarity] or '🐟'
-    local fishLabel = FishingUtils.getItemLabel(fishName)
+    local emoji = RARITY_EMOJIS[fishData.rarity] or '🐟'
+    local fishLabel = FishingUtils and FishingUtils.getItemLabel and FishingUtils.getItemLabel(fishName) or fishName
     
     -- Different messages based on rarity (only for rare+ fish)
     local message
-    local priority = FishingConstants.NOTIFICATION_PRIORITY.NORMAL
+    local priority = NOTIFICATION_PRIORITY.NORMAL
     local type = 'success'
     
     if fishData.rarity == 'mythical' then
         message = ('🔮 MITINIS LAIMIKIS: %s! Pranoksta legendą!'):format(fishLabel)
-        priority = FishingConstants.NOTIFICATION_PRIORITY.CRITICAL
+        priority = NOTIFICATION_PRIORITY.CRITICAL
         type = 'success'
     elseif fishData.rarity == 'legendary' then
         message = ('👑 LEGENDINIS LAIMIKIS: %s! Meistras žvejas!'):format(fishLabel)
-        priority = FishingConstants.NOTIFICATION_PRIORITY.HIGH
+        priority = NOTIFICATION_PRIORITY.HIGH
         type = 'success'
     elseif fishData.rarity == 'epic' then
         message = ('💎 EPIŠKAS LAIMIKIS: %s! Neįtikėtinas sėkmingumas!'):format(fishLabel)
-        priority = FishingConstants.NOTIFICATION_PRIORITY.HIGH
+        priority = NOTIFICATION_PRIORITY.HIGH
         type = 'success'
     elseif fishData.rarity == 'rare' then
         message = ('🌟 RETAS LAIMIKIS: %s!'):format(fishLabel)
-        priority = FishingConstants.NOTIFICATION_PRIORITY.NORMAL
+        priority = NOTIFICATION_PRIORITY.NORMAL
         type = 'success'
     else
         -- Don't show notifications for common/uncommon fish to reduce spam
@@ -355,9 +386,12 @@ function UI.formatEquipment(item, playerLevel, isOwned)
         table.insert(metadata, { label = 'Greičio bonusas', value = speedBonus .. '%' })
     end
     
+    local fishLabel = FishingUtils and FishingUtils.getItemLabel and FishingUtils.getItemLabel(item.name) or item.name
+    local priceText = FishingUtils and FishingUtils.formatPrice and FishingUtils.formatPrice(item.price) or ('€%d'):format(item.price)
+    
     return {
-        title = FishingUtils.getItemLabel(item.name),
-        description = 'Kaina: ' .. FishingUtils.formatPrice(item.price),
+        title = fishLabel,
+        description = 'Kaina: ' .. priceText,
         image = GetInventoryIcon and GetInventoryIcon(item.name) or nil,
         disabled = item.minLevel > playerLevel,
         metadata = metadata
@@ -366,6 +400,8 @@ end
 
 -- Show environment status (simplified)
 function UI.showEnvironmentStatus()
+    if not FishingEnvironment then return end
+    
     local env = FishingEnvironment.getInfo()
     local info = {}
     
@@ -380,7 +416,7 @@ function UI.showEnvironmentStatus()
         table.insert(info, ('📉 Nuobauda: -%d%% gaudymo šansas'):format(math.floor((1 - effects.chanceMultiplier) * 100)))
     end
     
-    UI.queueNotification(table.concat(info, '\n'), 'inform', FishingConstants.NOTIFICATION_PRIORITY.NORMAL)
+    UI.queueNotification(table.concat(info, '\n'), 'inform', NOTIFICATION_PRIORITY.NORMAL)
 end
 
 -- Clear notification queue
@@ -406,10 +442,16 @@ function UI.silentLevelNotification(level)
         UI.queueNotification(
             ('🎉 Pasiekėte %d lygį!'):format(level),
             'success',
-            FishingConstants.NOTIFICATION_PRIORITY.HIGH
+            NOTIFICATION_PRIORITY.HIGH
         )
     end
 end
+
+-- Initialize once the script loads
+CreateThread(function()
+    Wait(1000)
+    UI.init()
+end)
 
 -- Export
 _G.FishingUI = UI
